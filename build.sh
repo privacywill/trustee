@@ -1,0 +1,8 @@
+#!/bin/bash
+ARCH=x86_64
+
+mkdir -p output/bin
+
+cargo build --bin restful-as --features restful-bin,tdx-verifier,snp-verifier --release
+
+cp target/release/restful-as output/bin/restful-as
