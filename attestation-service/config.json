@@ -4,10 +4,14 @@
         "type": "BuiltIn",
         "storage": {
             "type": "LocalFs"
-	}
+	    }
     },
     "attestation_token_broker": {
-        "type": "Simple",
-        "duration_min": 5
+        "type": "Ear",
+        "duration_min": 60,
+        "profile_name": "tag:github.com,2023:veraison/ear",
+        "signer": {
+            "ratation_duration": 1
+        }
     }
 }

@@ -5,6 +5,7 @@
 
 use crate::TeeClaims;
 use anyhow::*;
+use jsonwebtoken::jwk;
 use serde::Deserialize;
 use shadow_rs::concatcp;
 use std::collections::HashMap;
@@ -13,6 +14,7 @@ use strum::Display;
 use crate::config::DEFAULT_WORK_DIR;
 
 pub mod ear_broker;
+mod key_manager;
 pub mod simple;
 
 pub const DEFAULT_TOKEN_DURATION: i64 = 5;
@@ -42,6 +44,8 @@ pub trait AttestationTokenBroker: Send + Sync {
     async fn get_policy(&self, _policy_id: String) -> Result<String> {
         bail!("Get Policy not support")
     }
+
+    async fn get_jwks(&self) -> Result<jwk::JwkSet>;
 }
 
 #[derive(Deserialize, Debug, Clone, Display, PartialEq)]

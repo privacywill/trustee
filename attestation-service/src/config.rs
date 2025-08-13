@@ -145,9 +145,7 @@ mod tests {
             build_name: "0.1.0".into(),
             profile_name: "tag:github.com,2024:confidential-containers/Trustee".into(),
             signer: Some(ear_broker::TokenSignerConfig {
-                key_path: "/etc/key".into(),
-                cert_url: Some("https://example.io".into()),
-                cert_path: Some("/etc/cert.pem".into())
+                ratation_duration: 1
             })
         })
     })]

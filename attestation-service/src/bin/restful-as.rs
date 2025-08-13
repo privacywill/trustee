@@ -13,7 +13,7 @@ use strum::{AsRefStr, EnumString};
 use thiserror::Error;
 use tokio::sync::RwLock;
 
-use crate::restful::{attestation, get_challenge, get_policies, set_policy};
+use crate::restful::{attestation, get_challenge, get_jwks, get_policies, set_policy};
 
 use actix_cors::Cors;
 
@@ -58,6 +58,9 @@ enum WebApi {
 
     #[strum(serialize = "/challenge")]
     Challenge,
+
+    #[strum(serialize = "/jwks")]
+    Jwks,
 }
 
 #[derive(Error, Debug)]
@@ -144,6 +147,7 @@ async fn main() -> Result<(), RestfulError> {
                     .route(web::get().to(get_policies)),
             )
             .service(web::resource(WebApi::Challenge.as_ref()).route(web::post().to(get_challenge)))
+            .service(web::resource(WebApi::Jwks.as_ref()).route(web::get().to(get_jwks)))
             .app_data(web::Data::clone(&attestation_service))
     });
 

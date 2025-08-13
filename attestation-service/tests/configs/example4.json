@@ -15,9 +15,7 @@
         "build_name": "0.1.0",
         "profile_name": "tag:github.com,2024:confidential-containers/Trustee",
         "signer": {
-            "key_path": "/etc/key",
-            "cert_url": "https://example.io",
-            "cert_path": "/etc/cert.pem"
+            "ratation_duration": 1
         }
     }
 }

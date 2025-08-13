@@ -588,6 +588,7 @@ dependencies = [
  "base64 0.22.1",
  "canon-json",
  "cfg-if",
+ "chrono",
  "clap",
  "ear",
  "env_logger",

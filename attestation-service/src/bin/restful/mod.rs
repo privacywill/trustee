@@ -291,6 +291,35 @@ pub async fn get_policies(
     }
 }
 
+/// GET /jwks
+///
+/// Return the public key of the singing key
+/// ```json
+/// {
+///  "keys": [
+///    {
+///      "alg": "RS256",
+///      "kty": "RSA",
+///      "n": "z9-a6Kk13pSkiUZqUQdup9Yct6EjorEWXpoI6EoJLUraCZW0diVZE4ZL1KrRwzpA5L68iLQep2WAnmcBOhC8moMHikiIRtFmwRnNuGI3hoA-_vkcpNnxacPf-YUpmqHGXt5aiSEw6vh8XQG4rJRYi2m5vLdtHdOzADDpOQfMtn9clJ4gxc1Fmv2s85OnD9ZexmOnul958zBZigKxA62xFGgHry9OmqKhNobeT9hittmqyGDgyM7d5bwCOzgBge0_QpOn6wSNpGbhxmaGpd706udHv5EnWmgg3IS4-ojPBHrUXimfj_v2ndNGlJO8Lfz1ZNonqH_YcGq5f-X6nK8TkQ==",
+///      "use": "sig",
+///      "kid": "40e06469-89f0-456a-9d2e-8b403df59240",
+///      "e": "AQAB"
+///    }
+///  ]
+///}
+/// ```
+pub async fn get_jwks(
+    _request: HttpRequest,
+    cocoas: web::Data<Arc<RwLock<AttestationService>>>,
+) -> Result<HttpResponse> {
+    info!("get jwks.");
+
+    let jwks = cocoas.read().await.get_jwks().await.context("get jwks")?;
+    let jwks_str = serde_json::to_string(&jwks).context("serialize response body")?;
+
+    Ok(HttpResponse::Ok().body(jwks_str))
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RemovePolicyRequest {
     pub policy_ids: Vec<String>,

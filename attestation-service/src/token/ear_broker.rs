@@ -5,8 +5,6 @@
 
 use anyhow::*;
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use base64::Engine;
 use ear::{
     Algorithm, Appraisal, Ear, ExtensionKind, ExtensionValue, Extensions, RawValue, TrustVector,
     VerifierID,
@@ -14,11 +12,7 @@ use ear::{
 use jsonwebtoken::jwk;
 use kbs_types::Tee;
 use log::{debug, info, warn};
-use openssl::bn::{BigNum, BigNumContext};
-use openssl::ec::{EcGroup, EcKey};
-use openssl::nid::Nid;
-use openssl::pkey::{PKey, Private};
-use openssl::x509::X509;
+use openssl::pkey::PKey;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use serde_variant::to_variant_name;
@@ -29,6 +23,7 @@ use std::sync::Arc;
 use time::{Duration, OffsetDateTime};
 
 use crate::policy_engine::{PolicyEngine, PolicyEngineType};
+use crate::token::key_manager::{KeyManager, DEFAULT_RATATIION_DURATION};
 use crate::token::DEFAULT_TOKEN_WORK_DIR;
 use crate::{AttestationTokenBroker, TeeClaims};
 
@@ -41,13 +36,8 @@ const DEFAULT_POLICY_DIR: &str = concatcp!(DEFAULT_TOKEN_WORK_DIR, "/ear/policie
 
 #[derive(Deserialize, Debug, Clone, PartialEq)]
 pub struct TokenSignerConfig {
-    pub key_path: String,
-    #[serde(default = "Option::default")]
-    pub cert_url: Option<String>,
-
-    // PEM format certificate chain.
-    #[serde(default = "Option::default")]
-    pub cert_path: Option<String>,
+    // signing key ratation duration in days, default 7d
+    pub ratation_duration: u64,
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq)]
@@ -137,9 +127,7 @@ impl Default for Configuration {
 
 pub struct EarAttestationTokenBroker {
     config: Configuration,
-    private_key: EcKey<Private>,
-    cert_url: Option<String>,
-    cert_chain: Option<Vec<X509>>,
+    key_manager: Arc<KeyManager>,
     policy_engine: Arc<dyn PolicyEngine>,
 }
 
@@ -152,48 +140,20 @@ impl EarAttestationTokenBroker {
         )?;
         info!("Loading default AS policy \"default_cpu.rego\"");
 
-        if config.signer.is_none() {
-            log::info!("No Token Signer key in config file, create an ephemeral key and without CA pubkey cert");
-            return Ok(Self {
-                private_key: generate_ec_keys()?.0,
-                config,
-                cert_url: None,
-                cert_chain: None,
-                policy_engine,
-            });
+        let mut ratation_duration = DEFAULT_RATATIION_DURATION;
+        if !config.signer.is_none() {
+            ratation_duration = config.signer.clone().unwrap().ratation_duration;
         }
 
-        let signer = config.signer.clone().unwrap();
-        let pem_data = std::fs::read(&signer.key_path)
-            .map_err(|e| anyhow!("Read Token Signer private key failed: {:?}", e))?;
-        let private_key = EcKey::private_key_from_pem(&pem_data)?;
-
-        let cert_chain = signer
-            .cert_path
-            .as_ref()
-            .map(|cert_path| -> Result<Vec<X509>> {
-                let pem_cert_chain = std::fs::read_to_string(cert_path)
-                    .map_err(|e| anyhow!("Read Token Signer cert file failed: {:?}", e))?;
-                let mut chain = Vec::new();
-
-                for pem in pem_cert_chain.split("-----END CERTIFICATE-----") {
-                    let trimmed = format!("{}\n-----END CERTIFICATE-----", pem.trim());
-                    if !trimmed.starts_with("-----BEGIN CERTIFICATE-----") {
-                        continue;
-                    }
-                    let cert = X509::from_pem(trimmed.as_bytes())
-                        .map_err(|_| anyhow!("Invalid PEM certificate chain"))?;
-                    chain.push(cert);
-                }
-                Ok(chain)
-            })
-            .transpose()?;
-
+        let key_manager = KeyManager::new()?;
+        key_manager
+            .clone()
+            .start_rotation_task(std::time::Duration::from_secs(
+                ratation_duration * 3600 * 24,
+            ));
         Ok(Self {
             config,
-            private_key,
-            cert_url: signer.cert_url,
-            cert_chain,
+            key_manager,
             policy_engine,
         })
     }
@@ -307,9 +267,9 @@ impl AttestationTokenBroker for EarAttestationTokenBroker {
             extensions,
         };
         let mut jwt_header = ear::new_jwt_header(&Algorithm::ES256)?;
-        jwt_header.jwk = Some(self.pubkey_jwk()?);
+        jwt_header.jwk = Some(self.pubkey_jwk().await?);
 
-        let pkey = PKey::from_ec_key(self.private_key.clone())?;
+        let pkey = PKey::from_ec_key(self.key_manager.get_current_key().await?)?;
         let private_key_bytes = pkey.private_key_to_pem_pkcs8()?;
 
         let signed_ear = ear.sign_jwt_pem_with_header(&jwt_header, &private_key_bytes)?;
@@ -337,62 +297,19 @@ impl AttestationTokenBroker for EarAttestationTokenBroker {
             .await
             .map_err(Error::from)
     }
+
+    async fn get_jwks(&self) -> Result<jwk::JwkSet> {
+        return Ok(jwk::JwkSet {
+            keys: self.key_manager.get_jwks().await,
+        });
+    }
 }
 
 impl EarAttestationTokenBroker {
     // TODO: converge this with the jwk function in the simple token broker
-    fn pubkey_jwk(&self) -> Result<jwk::Jwk> {
-        let chain = self
-            .cert_chain
-            .as_ref()
-            .map(|certs| -> Result<Vec<String>> {
-                let mut chain = vec![];
-                for cert in certs {
-                    let der = cert.to_der()?;
-                    chain.push(URL_SAFE_NO_PAD.encode(der));
-                }
-                Ok(chain)
-            })
-            .transpose()?;
-
-        let common = jwk::CommonParameters {
-            key_algorithm: Some(jwk::KeyAlgorithm::ES256),
-            x509_url: self.cert_url.clone(),
-            x509_chain: chain,
-            ..Default::default()
-        };
-
-        let public_key = self.private_key.public_key();
-        let group = self.private_key.group();
-
-        let mut ctx = BigNumContext::new()?;
-        let mut x = BigNum::new()?;
-        let mut y = BigNum::new()?;
-        public_key.affine_coordinates_gfp(group, &mut x, &mut y, &mut ctx)?;
-
-        let algorithm = jwk::AlgorithmParameters::EllipticCurve(jwk::EllipticCurveKeyParameters {
-            key_type: jwk::EllipticCurveKeyType::EC,
-            curve: jwk::EllipticCurve::P256,
-            x: URL_SAFE_NO_PAD.encode(x.to_vec()),
-            y: URL_SAFE_NO_PAD.encode(y.to_vec()),
-        });
-
-        let jwk = jwk::Jwk { common, algorithm };
-
-        Ok(jwk)
+    async fn pubkey_jwk(&self) -> Result<jwk::Jwk> {
+        self.key_manager.get_current_jwk().await
     }
-}
-
-fn generate_ec_keys() -> Result<(EcKey<Private>, Vec<u8>, Vec<u8>)> {
-    let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
-    let ec_key = EcKey::generate(&group)?;
-    let pkey = PKey::from_ec_key(ec_key.clone())?;
-
-    Ok((
-        ec_key,
-        pkey.private_key_to_pem_pkcs8()?,
-        pkey.public_key_to_pem()?,
-    ))
 }
 
 /// This function does three things.
@@ -462,10 +379,25 @@ mod tests {
     use jsonwebtoken::DecodingKey;
     use std::io::Write;
     use tempfile::NamedTempFile;
+    use openssl::ec::{EcGroup, EcKey};
+    use openssl::nid::Nid;
+    use openssl::pkey::{PKey, Private};
 
     use crate::TeeClaims;
 
     use super::*;
+
+    fn generate_ec_keys() -> Result<(EcKey<Private>, Vec<u8>, Vec<u8>)> {
+        let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
+        let ec_key = EcKey::generate(&group)?;
+        let pkey = PKey::from_ec_key(ec_key.clone())?;
+
+        Ok((
+            ec_key,
+            pkey.private_key_to_pem_pkcs8()?,
+            pkey.public_key_to_pem()?,
+        ))
+    }
 
     #[tokio::test]
     async fn test_issue_ear_ephemeral_key() {
@@ -497,9 +429,7 @@ mod tests {
         private_key_file.write_all(&private_key_bytes).unwrap();
 
         let signer = TokenSignerConfig {
-            key_path: private_key_file.path().to_str().unwrap().to_string(),
-            cert_url: None,
-            cert_path: None,
+            ratation_duration: 7,
         };
 
         let mut config = Configuration::default();

@@ -4,8 +4,8 @@
 
 FROM --platform=${BUILDPLATFORM:-linux/amd64} docker.io/library/rust:latest AS builder
 ARG ARCH=x86_64
-ARG VERIFIER=all-verifier
-
+ARG VERIFIER=tdx-verifier
+ARG VERIFIER2=snp-verifier
 WORKDIR /usr/src/attestation-service
 COPY . .
 
@@ -27,11 +27,11 @@ RUN if [ "$(uname -m)" != "${ARCH}" ]; then \
     export RUSTFLAGS="${RUSTFLAGS_ARGS}"; \
     apt-get install -y ${GCC_PACKAGE}; \
     rustup target add ${RUSTC_TARGET}; fi; \
-    cargo install --path attestation-service --bin restful-as --features restful-bin,${VERIFIER} --locked ${TARGET_FLAG}
+    cargo install --path attestation-service --bin restful-as --features restful-bin,${VERIFIER},${VERIFIER2} --locked ${TARGET_FLAG}
 
 FROM ubuntu:22.04
 ARG ARCH=x86_64
-ARG VERIFIER=all-verifier
+ARG VERIFIER=all-verifier 
 
 LABEL org.opencontainers.image.source="https://github.com/confidential-containers/trustee/tree/main/attestation-service"
 
@@ -62,8 +62,11 @@ COPY --from=builder /usr/local/cargo/bin/restful-as /usr/local/bin/restful-as
 
 COPY ./attestation-service/config.json /etc/config.json
 
+COPY ./rsa_sha256_cert.pem /etc/rsa_sha256_cert.pem
+COPY ./rsa_sha256_key.pem /etc/rsa_sha256_key.pem
+
 VOLUME /opt/confidential-containers/attestation-service
 
-CMD ["restful-as", "--socket", "0.0.0.0:8080", "--config-file", "/etc/config.json"]
+CMD ["restful-as", "--socket", "0.0.0.0:8080", "--config-file", "/etc/config.json", "--https-pubkey-cert", "/etc/rsa_sha256_cert.pem", "--https-prikey", "/etc/rsa_sha256_key.pem"]
 
 EXPOSE 8080

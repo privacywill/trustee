@@ -10,6 +10,7 @@
 use anyhow::*;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
+use jsonwebtoken::jwk::JwkSet;
 use log::info;
 use openssl::rsa::Rsa;
 use openssl::sign::Signer;
@@ -332,6 +333,10 @@ impl AttestationTokenBroker for SimpleAttestationTokenBroker {
             .get_policy(policy_id)
             .await
             .map_err(Error::from)
+    }
+
+    async fn get_jwks(&self) -> Result<JwkSet> {
+        return Ok(JwkSet { keys: vec![] });
     }
 }
 

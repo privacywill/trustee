@@ -16,6 +16,7 @@ pub use serde_json::Value;
 
 use anyhow::{anyhow, bail, Context, Result};
 use config::Config;
+use jsonwebtoken::jwk::JwkSet;
 use log::{debug, info};
 use rvps::{RvpsApi, RvpsError};
 use serde::{Deserialize, Serialize};
@@ -266,6 +267,12 @@ impl AttestationService {
         verifier
             .generate_supplemental_challenge(tee_parameters)
             .await
+    }
+
+    /// Get Jwks
+    pub async fn get_jwks(&self) -> Result<JwkSet> {
+        let jwks = self.token_broker.get_jwks().await?;
+        Ok(jwks)
     }
 }
 
