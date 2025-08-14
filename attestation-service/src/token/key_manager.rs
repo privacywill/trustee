@@ -43,7 +43,7 @@ impl KeyManager {
         public_key.affine_coordinates_gfp(&group, &mut x, &mut y, &mut ctx)?;
 
         let common = jwk::CommonParameters {
-            key_id: Some(key_id),
+            key_id: Some(key_id.clone()),
             public_key_use: Some(jwk::PublicKeyUse::Signature),
             key_algorithm: Some(DEFAULT_KEY_ALGORITHM),
             ..Default::default()
@@ -56,7 +56,7 @@ impl KeyManager {
         });
         let jwk = jwk::Jwk { common, algorithm };
         Ok(JwkWithKey {
-            kid: Uuid::new_v4().to_string(),
+            kid: key_id,
             _created_at: Utc::now(),
             private_key: private_key,
             jwk: jwk,
@@ -92,6 +92,13 @@ impl KeyManager {
         self.current.read().await.kid.clone()
     }
 
+    pub async fn get_previous_kid(&self) -> Option<String> {
+        match self.previous.read().await.clone() {
+            Some(jwk) => Some(jwk.kid),
+            None => None
+        }
+    }
+
     pub async fn get_jwks(&self) -> Vec<Jwk> {
         let mut res = vec![];
         res.push(self.current.read().await.jwk.clone());
@@ -111,7 +118,7 @@ impl KeyManager {
                     error!("failed to roate jwk!");
                     continue;
                 }
-                info!("jwk roated to {}", self.get_current_kid().await)
+                info!("jwks rotated, current {}, previous {:?}", self.get_current_kid().await, self.get_previous_kid().await)
             }
         });
     }

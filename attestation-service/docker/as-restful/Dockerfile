@@ -26,8 +26,9 @@ RUN if [ "$(uname -m)" != "${ARCH}" ]; then \
     export RUSTFLAGS_ARGS=" -C linker=${GCC_COMPILER}"; \
     export RUSTFLAGS="${RUSTFLAGS_ARGS}"; \
     apt-get install -y ${GCC_PACKAGE}; \
-    rustup target add ${RUSTC_TARGET}; fi; \
-    cargo install --path attestation-service --bin restful-as --features restful-bin,${VERIFIER},${VERIFIER2} --locked ${TARGET_FLAG}
+    rustup target add ${RUSTC_TARGET}; fi; 
+
+RUN cargo install --path attestation-service --bin restful-as --features restful-bin,${VERIFIER},${VERIFIER2} --locked ${TARGET_FLAG}
 
 FROM ubuntu:22.04
 ARG ARCH=x86_64
@@ -62,11 +63,8 @@ COPY --from=builder /usr/local/cargo/bin/restful-as /usr/local/bin/restful-as
 
 COPY ./attestation-service/config.json /etc/config.json
 
-COPY ./rsa_sha256_cert.pem /etc/rsa_sha256_cert.pem
-COPY ./rsa_sha256_key.pem /etc/rsa_sha256_key.pem
-
 VOLUME /opt/confidential-containers/attestation-service
 
-CMD ["restful-as", "--socket", "0.0.0.0:8080", "--config-file", "/etc/config.json", "--https-pubkey-cert", "/etc/rsa_sha256_cert.pem", "--https-prikey", "/etc/rsa_sha256_key.pem"]
+CMD ["restful-as", "--socket", "0.0.0.0:8080", "--config-file", "/etc/config.json"]
 
 EXPOSE 8080
