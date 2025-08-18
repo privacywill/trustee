@@ -95,7 +95,7 @@ impl KeyManager {
     pub async fn get_previous_kid(&self) -> Option<String> {
         match self.previous.read().await.clone() {
             Some(jwk) => Some(jwk.kid),
-            None => None
+            None => None,
         }
     }
 
@@ -118,7 +118,11 @@ impl KeyManager {
                     error!("failed to roate jwk!");
                     continue;
                 }
-                info!("jwks rotated, current {}, previous {:?}", self.get_current_kid().await, self.get_previous_kid().await)
+                info!(
+                    "jwks rotated, current {}, previous {:?}",
+                    self.get_current_kid().await,
+                    self.get_previous_kid().await
+                )
             }
         });
     }

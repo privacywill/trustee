@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 
 pub mod ccel;
-
+pub mod cel;
 pub const GUID_SIZE: usize = 16;
 
 #[derive(Clone, Serialize)]

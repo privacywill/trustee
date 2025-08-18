@@ -377,11 +377,11 @@ pub fn transform_claims(
 mod tests {
     use assert_json_diff::assert_json_eq;
     use jsonwebtoken::DecodingKey;
-    use std::io::Write;
-    use tempfile::NamedTempFile;
     use openssl::ec::{EcGroup, EcKey};
     use openssl::nid::Nid;
     use openssl::pkey::{PKey, Private};
+    use std::io::Write;
+    use tempfile::NamedTempFile;
 
     use crate::TeeClaims;
 

@@ -22,6 +22,7 @@ struct TdxEvidence {
     cc_eventlog: Option<String>,
     // Base64 encoded TD quote.
     quote: String,
+    with_event_log: bool,
 }
 
 #[derive(Debug, Default)]
@@ -126,7 +127,11 @@ async fn verify_evidence(
         }
     }
     // Return Evidence parsed claim
-    let mut claim = generate_parsed_claim(quote, ccel_option)?;
+    let mut claim = if evidence.with_event_log {
+        generate_parsed_claim(quote, ccel_option)?
+    } else {
+        generate_parsed_claim(quote, None)?
+    };
     extend_using_custom_claims(&mut claim, custom_claims)?;
 
     Ok(claim)

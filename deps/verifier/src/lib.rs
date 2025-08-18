@@ -35,6 +35,9 @@ pub mod cca;
 #[cfg(feature = "se-verifier")]
 pub mod se;
 
+#[cfg(feature = "gcp-snp-vtpm-verifier")]
+pub mod gcp_snp_vtpm;
+
 #[cfg(any(
     feature = "az-tdx-vtpm-verifier",
     feature = "tdx-verifier",

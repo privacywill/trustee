@@ -6388,6 +6388,8 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tonic-build",
+ "tss-esapi",
+ "uuid",
  "veraison-apiclient",
  "x509-parser",
 ]
