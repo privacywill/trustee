@@ -10,24 +10,23 @@ use az_snp_vtpm::certs::{AmdChain, Vcek};
 use az_snp_vtpm::report::AttestationReport;
 use az_snp_vtpm::vtpm::QuoteError;
 use base64::{engine::general_purpose::STANDARD, Engine};
-use eventlog::cel::{Cel, MrBank, TPM_ALG_SHA384};
-use log::info;
+use eventlog::cel::{Cel, TPM_ALG_SHA384};
+use log::{error, info};
 use openssl::{ec::EcKey, ecdsa, sha::sha384};
-use quote::Quote;
+use quote::{base64_to_vec, Quote};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sev::{
     certs::snp::Certificate,
     firmware::host::{CertTableEntry, CertType},
 };
-use std::collections::HashMap;
+use sha2::{Digest, Sha256};
 use std::mem::offset_of;
 use thiserror::Error;
 use tss_esapi::structures::{Attest, AttestInfo};
 use tss_esapi::traits::UnMarshall;
 use uuid::Uuid;
 use x509_parser::prelude::*;
-
 pub mod quote;
 const HCL_VMPL_VALUE: u32 = 0;
 const COS_EVENT_PCR: u8 = 13;
@@ -40,9 +39,11 @@ struct GcpVendorCertificates {
 #[derive(Serialize, Deserialize)]
 struct Evidence {
     quote: Quote,
+    #[serde(deserialize_with = "base64_to_vec")]
     report: Vec<u8>,
     vcek: String,
-    canoical_event_log: Vec<u8>,
+    #[serde(deserialize_with = "base64_to_vec")]
+    canonical_event_log: Vec<u8>,
 }
 
 pub struct GcpSnpVtpm {
@@ -104,8 +105,7 @@ impl Verifier for GcpSnpVtpm {
             .context("Failed to deserialize Gcp vTPM SEV-SNP evidence")?;
 
         // 1. Verify SNP Report
-        let snp_report: AttestationReport =
-            bincode::deserialize(&STANDARD.decode(&evidence.report)?)?;
+        let snp_report: AttestationReport = bincode::deserialize(&evidence.report)?;
 
         let cert_table = unmarshal_cert_table(&STANDARD.decode(&evidence.vcek)?).unwrap();
 
@@ -118,9 +118,9 @@ impl Verifier for GcpSnpVtpm {
 
         vcek.validate(&self.vendor_certs.ca_chain)
             .context("Failed to validate VCEK")?;
-
+        info!("vcek validation successfully!");
         verify_snp_report(&snp_report, &vcek)?;
-
+        info!("snp report validation successfully!");
         // 2. Verify Tpm Quote Signature
         let ak_cert_str = format!(
             "-----BEGIN CERTIFICATE-----\n{}\n-----END CERTIFICATE-----",
@@ -132,30 +132,37 @@ impl Verifier for GcpSnpVtpm {
         evidence.quote.verify_signature(&ak_pub)?;
         evidence.quote.verify_nonce(&snp_report.report_data)?;
 
-        let mut pcr_value = Vec::new();
+        let mut quote_digest = Vec::new();
         if let AttestInfo::Quote { info } = Attest::unmarshall(&evidence.quote.message)?.attested()
         {
-            pcr_value = info.pcr_digest().to_vec();
+            quote_digest = info.pcr_digest().to_vec();
         } else {
             bail!("unsupported attest type");
         };
 
         // 3. Verify Canonical Event Log
-        let cel = Cel::from_bytes(&evidence.canoical_event_log).unwrap();
+        let cel = Cel::from_bytes(&evidence.canonical_event_log).unwrap();
         for (i, record) in cel.records.iter().enumerate() {
             record
                 .verify_digests()
                 .context(format!("Record {} digest verification failed", i))?;
         }
 
-        let mut registers = HashMap::new();
-        registers.insert(COS_EVENT_PCR - 1, pcr_value.clone());
-        let mr_bank = MrBank {
-            hash_alg: TPM_ALG_SHA384,
-            registers: registers,
-        };
+        let pcrs = cel.cal_hash(TPM_ALG_SHA384)?;
+        let pcr = pcrs.get(&COS_EVENT_PCR).unwrap();
+        let mut hasher = Sha256::new();
+        hasher.update(pcr);
+        let digest = hasher.finalize().to_vec();
 
-        cel.replay(&mr_bank)?;
+        if digest != quote_digest {
+            error!(
+                "Mismatch digest for pcr {}: expected {}, got {}",
+                COS_EVENT_PCR,
+                hex::encode(quote_digest),
+                hex::encode(digest)
+            );
+        }
+
         info!("Canonical event log replayed successfully!");
 
         let mut claim = parse_tee_evidence_gcp(&snp_report);
@@ -164,10 +171,7 @@ impl Verifier for GcpSnpVtpm {
         };
 
         let mut tpm_values = serde_json::Map::new();
-        tpm_values.insert(
-            format!("pcr{:02}", 13),
-            Value::String(hex::encode(&pcr_value)),
-        );
+        tpm_values.insert(format!("pcr{:02}", 13), Value::String(hex::encode(pcr)));
         map.insert("tpm".to_string(), Value::Object(tpm_values));
         let cel_map = cel.to_parsed_claims();
         map.insert("canonical_eventlog".to_string(), Value::Object(cel_map));
@@ -347,13 +351,12 @@ pub fn unmarshal_cert_table(certs: &[u8]) -> Result<Vec<CertTableEntry>, String>
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
     use super::*;
     use eventlog::cel::Cel;
     use openssl::bn::BigNum;
     use openssl::ecdsa::EcdsaSig;
-    use openssl::{hash::MessageDigest, sha::Sha256, sign::Verifier as SslVerifier};
+    use openssl::{hash::MessageDigest, sign::Verifier as SslVerifier};
+    use std::str::FromStr;
     use tss_esapi::structures::Signature;
 
     const REPORT: &str = include_str!("../../test_data/gcp-snp-vtpm/report.bin");

@@ -7,7 +7,6 @@ ARG ARCH=x86_64
 ARG VERIFIER=tdx-verifier
 ARG VERIFIER2=snp-verifier
 WORKDIR /usr/src/attestation-service
-COPY . .
 
 # Install TPM Build Dependencies
 RUN apt-get update && apt-get install -y protobuf-compiler clang libtss2-dev
@@ -28,7 +27,9 @@ RUN if [ "$(uname -m)" != "${ARCH}" ]; then \
     apt-get install -y ${GCC_PACKAGE}; \
     rustup target add ${RUSTC_TARGET}; fi; 
 
-RUN cargo install --path attestation-service --bin restful-as --features restful-bin,${VERIFIER},${VERIFIER2} --locked ${TARGET_FLAG}
+COPY . .
+
+RUN cargo install --path attestation-service --bin restful-as --features restful-bin,${VERIFIER},${VERIFIER2},gcp-snp-vtpm-verifier --locked ${TARGET_FLAG}
 
 FROM ubuntu:22.04
 ARG ARCH=x86_64

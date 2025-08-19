@@ -140,6 +140,17 @@ pub fn to_verifier(tee: &Tee) -> Result<Box<dyn Verifier + Send + Sync>> {
             }
         }
 
+        Tee::GcpSnpVtpm => {
+            cfg_if::cfg_if! {
+                if #[cfg(feature = "gcp-snp-vtpm-verifier")] {
+                    let verifier = gcp_snp_vtpm::GcpSnpVtpm::new()?;
+                    Ok(Box::new(verifier) as Box<dyn Verifier + Send + Sync>)
+                } else {
+                    bail!("feature `gcp-snp-vtpm-verifier` is not enabled for `verifier` crate.")
+                }
+            }
+        }
+
         Tee::Tpm => todo!(),
     }
 }

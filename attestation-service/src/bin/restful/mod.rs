@@ -88,6 +88,7 @@ fn to_tee(tee: &str) -> anyhow::Result<Tee> {
         "aztdxvtpm" => Tee::AzTdxVtpm,
         "se" => Tee::Se,
         "hygondcu" => Tee::HygonDcu,
+        "gcpsnpvtpm" => Tee::GcpSnpVtpm,
         other => bail!("tee `{other} not supported`"),
     };
 

@@ -151,23 +151,22 @@ impl fmt::Debug for Cel {
 }
 
 impl Cel {
-    /// Replays the event log against a given bank of measurement registers.
-    /// This is the Rust equivalent of the `Replay` method in Go.
-    pub fn replay(&self, bank: &MrBank) -> Result<()> {
+    /// cal hash of all the event logs
+    pub fn cal_hash(&self, hash_algo: TpmAlgId) -> Result<HashMap<u8, Vec<u8>>> {
         let mut replayed_digests: HashMap<u8, Vec<u8>> = HashMap::new();
         for record in &self.records {
             // Get the digest from the record that matches the bank's hash algorithm.
-            let event_digest = record.digests.get(&bank.hash_alg).ok_or_else(|| {
+            let event_digest = record.digests.get(&hash_algo).ok_or_else(|| {
                 anyhow!(
                     "Record {} does not contain a digest for algorithm {}",
                     record.rec_num,
-                    bank.hash_alg
+                    hash_algo
                 )
             })?;
             // Get the current value of the replayed register, or an initial value of all zeros.
             let current_digest = replayed_digests.entry(record.index).or_insert_with(|| {
                 // Determine the size of the zeroed buffer from the hash algorithm.
-                let hash_size = match bank.hash_alg {
+                let hash_size = match hash_algo {
                     TPM_ALG_SHA256 => 32,
                     TPM_ALG_SHA384 => 48,
                     TPM_ALG_SHA512 => 64,
@@ -176,7 +175,7 @@ impl Cel {
                 vec![0u8; hash_size]
             });
             // Perform the extend operation: new_digest = HASH(current_digest || event_digest)
-            let new_digest = match bank.hash_alg {
+            let new_digest = match hash_algo {
                 TPM_ALG_SHA256 => {
                     let mut hasher = Sha256::new();
                     hasher.update(&current_digest);
@@ -195,14 +194,18 @@ impl Cel {
                     hasher.update(event_digest);
                     hasher.finalize().to_vec()
                 }
-                _ => bail!(
-                    "Unsupported hash algorithm ID for replay: {}",
-                    bank.hash_alg
-                ),
+                _ => bail!("Unsupported hash algorithm ID for replay: {}", hash_algo),
             };
             // Update the replayed value.
             *current_digest = new_digest;
         }
+        Ok(replayed_digests)
+    }
+
+    /// Replays the event log against a given bank of measurement registers.
+    /// This is the Rust equivalent of the `Replay` method in Go.
+    pub fn replay(&self, bank: &MrBank) -> Result<()> {
+        let replayed_digests: HashMap<u8, Vec<u8>> = self.cal_hash(bank.hash_alg)?;
         // Now, compare the final replayed digests with the provided bank.
         let mut failed_indices = Vec::new();
         for (index, replayed_digest) in &replayed_digests {

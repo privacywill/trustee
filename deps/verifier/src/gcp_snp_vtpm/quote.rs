@@ -1,17 +1,28 @@
 use anyhow::{bail, Result};
+use base64::{prelude::BASE64_STANDARD, Engine};
 use log::info;
 use openssl::bn::BigNum;
 use openssl::ecdsa::EcdsaSig;
 use openssl::pkey::{PKey, Public};
 use openssl::{hash::MessageDigest, sign::Verifier};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use tss_esapi::structures::{Attest, Signature};
 use tss_esapi::traits::UnMarshall;
+
+pub fn base64_to_vec<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    BASE64_STANDARD.decode(&s).map_err(serde::de::Error::custom)
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Quote {
     pub ak_cert: String,
+    #[serde(deserialize_with = "base64_to_vec")]
     pub message: Vec<u8>,
+    #[serde(deserialize_with = "base64_to_vec")]
     pub signature: Vec<u8>,
     pub pcr: u32,
 }

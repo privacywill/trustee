@@ -595,7 +595,7 @@ dependencies = [
  "futures",
  "hex",
  "jsonwebtoken",
- "kbs-types 0.12.0 (git+https://github.com/virtee/kbs-types.git?rev=e3cc706)",
+ "kbs-types 0.12.0 (git+https://github.com/privacywill/kbs-types.git?rev=2b045fc)",
  "lazy_static",
  "log",
  "openssl",
@@ -3095,7 +3095,7 @@ dependencies = [
  "josekit",
  "jsonwebtoken",
  "jwt-simple",
- "kbs-types 0.12.0 (git+https://github.com/virtee/kbs-types.git?rev=e3cc706)",
+ "kbs-types 0.12.0 (git+https://github.com/privacywill/kbs-types.git?rev=2b045fc)",
  "kms",
  "lazy_static",
  "log",
@@ -3149,12 +3149,13 @@ dependencies = [
 [[package]]
 name = "kbs-types"
 version = "0.12.0"
-source = "git+https://github.com/virtee/kbs-types.git?rev=e3cc706#e3cc706ec4c1a88565598c5ce224da06a03f2265"
+source = "git+https://github.com/privacywill/kbs-types.git?rev=2b045fc#2b045fcd732d2d5e77c0d6cd8cd35f611f5ef1e9"
 dependencies = [
  "base64 0.22.1",
  "serde",
  "serde_json",
  "sha2",
+ "sm3",
  "strum",
  "thiserror 2.0.12",
 ]
@@ -6370,7 +6371,7 @@ dependencies = [
  "intel-tee-quote-verification-rs",
  "jsonwebkey",
  "jsonwebtoken",
- "kbs-types 0.12.0 (git+https://github.com/virtee/kbs-types.git?rev=e3cc706)",
+ "kbs-types 0.12.0 (git+https://github.com/privacywill/kbs-types.git?rev=2b045fc)",
  "log",
  "openssl",
  "reqwest 0.12.22",
